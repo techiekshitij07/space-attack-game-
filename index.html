@@ -52,8 +52,8 @@
         }
         .score-box { background: rgba(0,0,0,0.6); padding: 10px 18px; border-radius: 8px; border: 1px solid #00ffcc; color: #00ffcc; }
         .best-box { background: rgba(0,0,0,0.6); padding: 10px 18px; border-radius: 8px; border: 1px solid #ffcc00; color: #ffcc00; }
-        .boss-warning { position: absolute; top: 80px; width: 100%; text-align: center; color: #ff0055; font-size: 2.5rem; font-weight: bold; text-shadow: 0 0 25px #ff0055; display: none; animation: blink 0.8s infinite; z-index: 10;}
         
+        .boss-warning { position: absolute; top: 80px; width: 100%; text-align: center; color: #ff0055; font-size: 2.5rem; font-weight: bold; text-shadow: 0 0 25px #ff0055; display: none; animation: blink 0.8s infinite; z-index: 10;}
         @keyframes blink { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.3; transform: scale(1.1); } }
         
         .mission-overlay {
@@ -61,7 +61,6 @@
             font-size: 3.5rem; font-weight: bold; text-shadow: 0 0 30px #00ffcc, 0 0 10px #fff;
             display: none; z-index: 20; text-transform: uppercase; pointer-events: none;
         }
-        
         @keyframes flashText { 0% { opacity: 0; transform: scale(0.5); } 20% { opacity: 1; transform: scale(1.2); } 80% { opacity: 1; transform: scale(1); } 100% { opacity: 0; transform: scale(1.5); } }
 
         #start-screen { display: block; }
@@ -69,7 +68,6 @@
     </style>
 </head>
 <body>
-
     <div id="hud">
         <div class="score-box">SCORE: <span id="score-val">0</span></div>
         <div class="best-box">BEST: <span id="best-val">0</span></div>
@@ -95,17 +93,18 @@
     <div id="game-container"></div>
 
     <script>
-        // We use native AudioContext instead of external libs to prevent memory leaks on low-end devices
         const AudioSys = {
             ctx: null,
             init: function() {
-                if(this.ctx) return;
-                window.AudioContext = window.AudioContext || window.webkitAudioContext;
-                this.ctx = new AudioContext();
+                try {
+                    if(this.ctx) return;
+                    window.AudioContext = window.AudioContext || window.webkitAudioContext;
+                    if(window.AudioContext) { this.ctx = new AudioContext(); }
+                } catch(e) { console.log("Audio API Blocked or unsupported", e); }
             },
             beep: function(freq, type, dur, vol) {
-                if(!this.ctx || this.ctx.state !== 'running') return;
                 try {
+                    if(!this.ctx || this.ctx.state !== 'running') return;
                     let osc = this.ctx.createOscillator();
                     let gain = this.ctx.createGain();
                     osc.type = type;
@@ -116,7 +115,7 @@
                     gain.gain.setValueAtTime(vol, this.ctx.currentTime);
                     gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + dur);
                     osc.stop(this.ctx.currentTime + dur);
-                } catch(e) { console.warn("Audio skipped"); }
+                } catch(e) {}
             },
             playLaser: function() { this.beep(880, 'square', 0.1, 0.05); },
             playExp: function() { this.beep(150, 'sawtooth', 0.3, 0.1); },
@@ -150,11 +149,10 @@
         class Enemy extends Phaser.Physics.Arcade.Sprite {
             constructor(scene, x, y) { super(scene, x, y, 'fallback_enemy'); }
             spawn(x, y, speedY, textureKey) {
-                this.setTexture(textureKey); // Apply random cropped logo texture or fallback
+                this.setTexture(textureKey); 
                 this.body.reset(x, y);
                 this.setActive(true).setVisible(true);
                 this.setVelocityY(speedY);
-                // Perfectly fit circular hitbox centered in the 50x50 image
                 this.body.setCircle(22, 3, 3); 
             }
             preUpdate(time, delta) {
@@ -166,7 +164,7 @@
         class PowerUp extends Phaser.Physics.Arcade.Sprite {
             constructor(scene, x, y) { super(scene, x, y, 'powerup'); }
             spawn(x, y, type) {
-                this.powerType = type; // 0: Spread, 1: Sidekicks, 2: Rapid, 3: Boom
+                this.powerType = type; 
                 this.setTint(type === 0 ? 0x00ffcc : type === 1 ? 0x0088ff : type === 2 ? 0xffcc00 : 0xff0055);
                 this.body.reset(x, y);
                 this.setActive(true).setVisible(true);
@@ -189,31 +187,25 @@
             }
 
             preload() {
-                // Load images but do not halt game if missing
+                // Request images, but don't panic if they fail
                 this.load.image('hero_img', 'hero.webp');
+                this.load.image('boss_img', 'spaceship.1.jpg');
                 this.load.image('enemy_sheet', 'web game .webp');
                 
-                // Suppress load errors to prevent crashes if images are blocked by CORS
-                this.load.on('loaderror', (file) => { console.log('Asset missing or blocked, using fallback:', file.key); });
+                this.load.on('loaderror', (file) => { console.log('Asset missing or blocked, will use auto-fallback for:', file.key); });
 
-                // Generate Bulletproof Fallback Graphics
                 let g = this.make.graphics({x: 0, y: 0}, false);
                 
                 g.fillStyle(0x00ffcc, 1); g.fillRect(0, 0, 6, 30);
                 g.generateTexture('laser', 6, 30); g.clear();
 
-                g.fillStyle(0xff0055, 1); g.fillCircle(12, 12, 12);
-                g.generateTexture('boss_laser', 24, 24); g.clear();
-
                 g.fillStyle(0xffffff, 1); g.fillCircle(15, 15, 15);
                 g.generateTexture('powerup', 30, 30); g.clear();
 
-                // Colored Particles
                 g.fillStyle(0xff0055, 1); g.fillCircle(4, 4, 4); g.generateTexture('part_red', 8, 8); g.clear();
                 g.fillStyle(0x00ffcc, 1); g.fillCircle(4, 4, 4); g.generateTexture('part_cyan', 8, 8); g.clear();
                 g.fillStyle(0xffcc00, 1); g.fillCircle(4, 4, 4); g.generateTexture('part_yellow', 8, 8); g.clear();
 
-                // Fallback Textures
                 g.fillStyle(0xff0055, 1); g.fillRect(0,0,50,50); g.generateTexture('fallback_enemy', 50, 50); g.clear();
                 g.fillStyle(0x00ffcc, 1); g.fillTriangle(25,0, 0,50, 50,50); g.generateTexture('fallback_hero', 50, 50); g.destroy();
             }
@@ -222,31 +214,44 @@
                 const GW = this.scale.width;
                 const GH = this.scale.height;
                 
-                this.enemyTextures = [];
-                let sheet = this.textures.exists('enemy_sheet') ? this.textures.get('enemy_sheet') : null;
-                
-                // Safely extract chunks if image loaded correctly
-                if (sheet && sheet.key !== '__DEFAULT') {
-                    let img = sheet.getSourceImage();
-                    if (img && img.width > 50) {
-                        for(let i=0; i<10; i++) {
-                            let canvas = Phaser.Display.Canvas.CanvasPool.create2D(this, 50, 50);
-                            let ctx = canvas.getContext('2d');
-                            let rx = Phaser.Math.Between(0, Math.max(0, img.width - 50));
-                            let ry = Phaser.Math.Between(0, Math.max(0, img.height - 50));
-                            ctx.drawImage(img, rx, ry, 50, 50, 0, 0, 50, 50);
-                            this.textures.addCanvas('logo_' + i, canvas);
-                            this.enemyTextures.push('logo_' + i);
-                        }
+                // --- SAFE TEXTURE SCANNER (Prevents Invisible Bug) ---
+                const getSafeTex = (key, fallback) => {
+                    let tex = this.textures.exists(key) ? this.textures.get(key) : null;
+                    if (tex && tex.key !== '__DEFAULT' && tex.source[0] && tex.source[0].width > 10) {
+                        return key;
                     }
+                    console.log(`Using fallback for ${key} to prevent invisible sprite.`);
+                    return fallback;
+                };
+
+                let heroTex = getSafeTex('hero_img', 'fallback_hero');
+                let bossTex = getSafeTex('boss_img', 'fallback_enemy');
+
+                this.enemyTextures = [];
+                let sheetKey = getSafeTex('enemy_sheet', null);
+                if (sheetKey) {
+                    try {
+                        let img = this.textures.get(sheetKey).getSourceImage();
+                        if (img && img.naturalWidth > 50) {
+                            for(let i=0; i<8; i++) {
+                                let canvas = Phaser.Display.Canvas.CanvasPool.create2D(this, 50, 50);
+                                let ctx = canvas.getContext('2d');
+                                let rx = Phaser.Math.Between(0, Math.max(0, img.width - 50));
+                                let ry = Phaser.Math.Between(0, Math.max(0, img.height - 50));
+                                ctx.drawImage(img, rx, ry, 50, 50, 0, 0, 50, 50);
+                                this.textures.addCanvas('logo_' + i, canvas);
+                                this.enemyTextures.push('logo_' + i);
+                            }
+                        }
+                    } catch(err) { console.warn("Canvas blocked, using fallback", err); }
                 }
+                
                 if(this.enemyTextures.length === 0) {
                     this.enemyTextures = ['fallback_enemy'];
                 }
 
                 this.score = 0; this.isGameOver = true; this.level = 1; this.bossActive = false;
                 
-                // Parallax Background
                 this.stars = [];
                 for(let i=0; i<100; i++) {
                     let s = this.add.image(Phaser.Math.Between(0, GW), Phaser.Math.Between(0, GH), 'part_cyan')
@@ -254,32 +259,21 @@
                     this.stars.push(s);
                 }
 
-                let heroTex = this.textures.exists('hero_img') ? 'hero_img' : 'fallback_hero';
                 this.player = this.physics.add.sprite(GW/2, GH - 100, heroTex);
-                
-                // Safe scaling
-                if(this.player.width > 100) {
-                    this.player.setDisplaySize(70, 70);
-                }
+                if(this.player.width > 100) { this.player.setDisplaySize(70, 70); }
                 this.player.setCollideWorldBounds(true);
                 
-                // Perfect Circle Hitbox centered
-                let rad = this.player.displayWidth * 0.4;
-                this.player.body.setCircle(rad, (this.player.width - rad*2)/2, (this.player.height - rad*2)/2); 
+                let rad = (this.player.displayWidth * 0.4) || 20;
+                let offsetX = (this.player.width - rad*2)/2 || 0;
+                let offsetY = (this.player.height - rad*2)/2 || 0;
+                this.player.body.setCircle(rad, offsetX, offsetY); 
                 this.player.setVisible(false);
 
-                // Sidekicks
                 this.sidekickL = this.add.sprite(0, 0, heroTex).setDisplaySize(35, 35).setVisible(false);
                 this.sidekickR = this.add.sprite(0, 0, heroTex).setDisplaySize(35, 35).setVisible(false);
 
-                // Boss Setup
-                this.boss = this.physics.add.sprite(GW/2, -150, this.enemyTextures[0]).setVisible(false);
-                this.boss.setDisplaySize(180, 180);
-                this.boss.body.setCircle(80, this.boss.width/2 - 80, this.boss.height/2 - 80);
-                this.bossHP = 0;
-                this.bossMaxHP = 0;
-
-                // Boss HP Bar Graphics
+                this.boss = this.physics.add.sprite(GW/2, -150, bossTex).setVisible(false);
+                this.bossHP = 0; this.bossMaxHP = 0;
                 this.bossHpBg = this.add.graphics().setVisible(false).setDepth(20);
                 this.bossHpBar = this.add.graphics().setVisible(false).setDepth(20);
 
@@ -301,11 +295,8 @@
                 this.physics.add.overlap(this.player, this.powerups, this.collectPowerup, null, this);
 
                 this.cursors = this.input.keyboard.createCursorKeys();
-                
                 this.input.on('pointermove', pointer => {
-                    if (!this.isGameOver) {
-                        this.player.x = Phaser.Math.Clamp(pointer.x, 40, GW - 40);
-                    }
+                    if (!this.isGameOver) { this.player.x = Phaser.Math.Clamp(pointer.x, 40, GW - 40); }
                 });
 
                 this.resetStats();
@@ -317,7 +308,6 @@
             }
 
             update(time, delta) {
-                // Starfield scroll
                 this.stars.forEach(star => {
                     star.y += star.scale * 3;
                     if(star.y > this.scale.height) { star.y = -10; star.x = Phaser.Math.Between(0, this.scale.width); }
@@ -325,54 +315,46 @@
 
                 if (this.isGameOver) return;
 
-                // Keyboard Movement
                 if (this.cursors.left.isDown) this.player.setVelocityX(-550);
                 else if (this.cursors.right.isDown) this.player.setVelocityX(550);
                 else this.player.setVelocityX(0);
 
-                // Update Sidekicks position
                 if(this.hasSidekicks) {
                     this.sidekickL.setPosition(this.player.x - 60, this.player.y + 20);
                     this.sidekickR.setPosition(this.player.x + 60, this.player.y + 20);
                 }
 
-                // Auto Fire
                 if (time > this.lastFired) {
                     this.fireWeapon();
                     this.lastFired = time + this.fireDelay;
                 }
 
-                // Boss Check - Appears every 100 points
-                if (this.score >= this.level * 100 && !this.bossActive) {
+                if (this.score > 0 && this.score % 100 === 0 && !this.bossActive) {
                     this.spawnBoss();
                 }
 
                 if (this.bossActive) {
-                    // Update HP Bar Position and Fill
-                    this.bossHpBg.clear();
-                    this.bossHpBg.fillStyle(0x000000, 0.7);
+                    this.bossHpBg.clear(); this.bossHpBg.fillStyle(0x000000, 0.7);
                     this.bossHpBg.fillRect(this.boss.x - 75, this.boss.y - 110, 150, 12);
                     
-                    this.bossHpBar.clear();
-                    this.bossHpBar.fillStyle(0xff0055, 1);
+                    this.bossHpBar.clear(); this.bossHpBar.fillStyle(0xff0055, 1);
                     let hpPct = Math.max(0, this.bossHP / this.bossMaxHP);
                     this.bossHpBar.fillRect(this.boss.x - 75, this.boss.y - 110, 150 * hpPct, 12);
 
-                    // Boss Movement & Firing
-                    if (this.boss.y < 150) this.boss.setVelocityY(100); // Faster entrance
-                    else {
+                    // FIX: Checking for NaN to prevent invisible freeze
+                    if (this.boss.y < 150 && !isNaN(this.boss.y)) {
+                        this.boss.setVelocityY(100);
+                    } else if (!isNaN(this.boss.y)) {
                         this.boss.setVelocityY(0);
-                        // Complex boss movement based on level challenge
-                        let speedMultiplier = 1 + (this.level * 0.2);
-                        this.boss.x = this.scale.width/2 + Math.sin(time/(600 / speedMultiplier)) * 250;
+                        let speedMultiplier = 0.8 + (this.level * 0.2);
+                        this.boss.x = this.scale.width/2 + Math.sin(time/(800 / speedMultiplier)) * 200; 
                         
                         if (time > this.bossFireTimer) {
                             this.bossFire();
-                            this.bossFireTimer = time + Math.max(300, 900 - (this.level * 80)); 
+                            this.bossFireTimer = time + Math.max(500, 1800 - (this.level * 300)); 
                         }
                     }
                 } else {
-                    // Normal Enemy Spawn
                     if (time > this.enemySpawnTimer) {
                         let e = this.enemies.get();
                         if (e) {
@@ -387,48 +369,51 @@
             fireWeapon() {
                 AudioSys.playLaser();
                 
-                // --- SUPER WEAPON DURING BOSS ---
-                let applyBossBuff = (laser) => {
+                let setupLaser = (laser) => {
                     if(!laser) return;
                     if(this.bossActive) {
-                        laser.setScale(2.5); // Visually larger
-                        laser.setTint(0xffffff); // White hot color
-                        // Massive Hitbox for "Proximity" destruction (halke pass bhi blast)
-                        laser.body.setSize(50, 90); 
+                        laser.setScale(2.5); 
+                        laser.setTint(0xffffff);
+                        laser.body.setSize(40, 50, true); 
                     } else {
-                        laser.setScale(1); // Normal size
+                        laser.setScale(1); 
                         laser.clearTint();
-                        laser.body.setSize(laser.width, laser.height); // Reset hitbox
+                        laser.body.setSize(10, 30, true);
                     }
                 };
 
                 let l = this.lasers.get(); 
-                if(l) { l.fire(this.player.x, this.player.y - 40); applyBossBuff(l); }
+                if(l) { l.fire(this.player.x, this.player.y - 40); setupLaser(l); }
 
                 if(this.spreadFire) {
-                    let l1 = this.lasers.get(); if(l1) { l1.fire(this.player.x, this.player.y - 30, -200, -750); applyBossBuff(l1); }
-                    let l2 = this.lasers.get(); if(l2) { l2.fire(this.player.x, this.player.y - 30, 200, -750); applyBossBuff(l2); }
-                    let l3 = this.lasers.get(); if(l3) { l3.fire(this.player.x, this.player.y - 20, -400, -700); applyBossBuff(l3); }
-                    let l4 = this.lasers.get(); if(l4) { l4.fire(this.player.x, this.player.y - 20, 400, -700); applyBossBuff(l4); }
+                    let l1 = this.lasers.get(); if(l1) { l1.fire(this.player.x, this.player.y - 30, -200, -750); setupLaser(l1); }
+                    let l2 = this.lasers.get(); if(l2) { l2.fire(this.player.x, this.player.y - 30, 200, -750); setupLaser(l2); }
+                    let l3 = this.lasers.get(); if(l3) { l3.fire(this.player.x, this.player.y - 20, -400, -700); setupLaser(l3); }
+                    let l4 = this.lasers.get(); if(l4) { l4.fire(this.player.x, this.player.y - 20, 400, -700); setupLaser(l4); }
                 }
                 if(this.hasSidekicks) {
-                    let sl = this.lasers.get(); if(sl) { sl.fire(this.sidekickL.x, this.sidekickL.y - 20); applyBossBuff(sl); }
-                    let sr = this.lasers.get(); if(sr) { sr.fire(this.sidekickR.x, this.sidekickR.y - 20); applyBossBuff(sr); }
+                    let sl = this.lasers.get(); if(sl) { sl.fire(this.sidekickL.x, this.sidekickL.y - 20); setupLaser(sl); }
+                    let sr = this.lasers.get(); if(sr) { sr.fire(this.sidekickR.x, this.sidekickR.y - 20); setupLaser(sr); }
                 }
             }
 
             bossFire() {
                 AudioSys.playBoss();
-                // Number of lasers increases with level (Boss normal power upgrade)
-                let spreadCount = Math.min(9, 3 + (this.level * 2)); 
+                let spreadCount = Math.min(7, 1 + (this.level * 2)); 
                 let spread = [];
                 for(let i=0; i<spreadCount; i++) {
-                    spread.push(-250 + (500 / (spreadCount-1)) * i);
+                    spread.push(-200 + (400 / Math.max(1, spreadCount-1)) * i);
                 }
-                
+                let laserSpeed = 220 + (this.level * 70);
+
                 spread.forEach(vx => {
                     let bl = this.bossLasers.get();
-                    if(bl) { bl.fire(this.boss.x, this.boss.y + 60, vx, 450 + (this.level * 30)); bl.setTexture('boss_laser'); }
+                    if(bl) { 
+                        bl.fire(this.boss.x, this.boss.y + 60, vx, laserSpeed); 
+                        bl.setTexture('part_red'); 
+                        bl.setScale(3);
+                        bl.body.setSize(8, 8, true); 
+                    }
                 });
             }
 
@@ -449,28 +434,32 @@
                 laser.setActive(false).setVisible(false);
                 
                 this.bossHP--;
-                this.boss.setTint(0xffffff); // Flash white instead of red for powerful impact
-                this.time.delayedCall(50, () => this.boss.clearTint());
+                this.boss.setTint(0xff0000); 
+                this.time.delayedCall(80, () => { if(boss && boss.active) boss.clearTint(); });
+                this.emitYellow.emitParticleAt(laser.x, laser.y - 10, 15);
                 
-                // Screen shake on hit for animation enhancement
-                this.cameras.main.shake(100, 0.005);
-
                 if(this.bossHP <= 0) {
                     this.bossHpBg.setVisible(false);
                     this.bossHpBar.setVisible(false);
                     
                     AudioSys.playExp();
-                    this.cameras.main.shake(500, 0.02); // Big shake on death
-                    this.emitYellow.emitParticleAt(boss.x, boss.y, 60);
+                    this.cameras.main.shake(1200, 0.04); 
+                    
+                    for(let i = 0; i < 6; i++) {
+                        this.time.delayedCall(i * 150, () => {
+                            this.emitYellow.emitParticleAt(boss.x + Phaser.Math.Between(-70, 70), boss.y + Phaser.Math.Between(-70, 70), 40);
+                        });
+                    }
+                    
                     boss.setActive(false).setVisible(false);
                     this.bossActive = false;
                     this.level++;
-                    this.addScore(50); // Additional points for boss defeat
+                    this.addScore(10); 
                     this.spawnPowerupChance(boss.x, boss.y, true); 
                     document.getElementById('boss-warning').style.display = 'none';
                     
-                    this.showMissionText(`MISSION ${this.level} START!`);
-                    AudioSys.playLevelUp();
+                    this.showMissionText(`BOSS DESTROYED!\nMISSION ${this.level} START!`);
+                    this.time.delayedCall(1200, () => AudioSys.playLevelUp());
                 }
             }
 
@@ -478,7 +467,7 @@
                 if(pLaser.active && bLaser.active) {
                     pLaser.setActive(false).setVisible(false);
                     bLaser.setActive(false).setVisible(false);
-                    this.emitYellow.emitParticleAt(pLaser.x, pLaser.y, 4);
+                    this.emitYellow.emitParticleAt(pLaser.x, pLaser.y, 10);
                 }
             }
 
@@ -490,7 +479,7 @@
                 this.bossHpBar.setVisible(false);
                 this.physics.pause();
                 AudioSys.playExp();
-                this.cameras.main.shake(600, 0.03); // Massive shake on player death
+                this.cameras.main.shake(600, 0.03); 
                 this.emitCyan.emitParticleAt(player.x, player.y, 50);
                 player.setVisible(false);
                 this.sidekickL.setVisible(false); this.sidekickR.setVisible(false);
@@ -523,8 +512,8 @@
 
                 if(powerup.powerType === 0) this.spreadFire = true;
                 if(powerup.powerType === 1) { this.hasSidekicks = true; this.sidekickL.setVisible(true); this.sidekickR.setVisible(true); }
-                if(powerup.powerType === 2) this.fireDelay = 90; // Rapid
-                if(powerup.powerType === 3) { // BOOM Nuke
+                if(powerup.powerType === 2) this.fireDelay = 90; 
+                if(powerup.powerType === 3) { 
                     this.enemies.children.iterate(e => {
                         if(e && e.active) {
                             e.setActive(false).setVisible(false);
@@ -534,7 +523,6 @@
                     });
                 }
 
-                // Temporary Buff Reset
                 this.time.delayedCall(8000, () => {
                     this.spreadFire = false;
                     this.hasSidekicks = false; this.sidekickL.setVisible(false); this.sidekickR.setVisible(false);
@@ -556,18 +544,30 @@
                 this.showMissionText(`WARNING: LEVEL ${this.level} BOSS`);
                 this.cameras.main.shake(800, 0.01);
                 
-                // Clear screen for boss
                 this.enemies.children.iterate(e => { if(e) e.setActive(false).setVisible(false); });
 
-                this.bossHP = 20 + (this.level * 15); // Health scales aggressively with level
+                this.bossHP = 20 + (this.level * 15); 
                 this.bossMaxHP = this.bossHP;
                 
                 this.bossHpBg.setVisible(true);
                 this.bossHpBar.setVisible(true);
 
-                this.boss.setTexture(Phaser.Math.RND.pick(this.enemyTextures)); // Random boss logo
-                this.boss.setPosition(this.scale.width/2, -150);
+                // BULLETPROOF SPAWN FIX: Prevent NaN physics crash
                 this.boss.setActive(true).setVisible(true);
+                this.boss.setPosition(this.scale.width/2, -100);
+                
+                // FIX: setAngle(180) breaks hitboxes. Use setFlipY instead!
+                this.boss.setAngle(0); 
+                this.boss.setFlipY(true);
+                
+                this.boss.setDisplaySize(160, 160);
+                
+                // Safely calculate hitbox to prevent invisible/invincible bug
+                let safeW = (this.boss.width && this.boss.width > 10) ? this.boss.width : 160;
+                let safeH = (this.boss.height && this.boss.height > 10) ? this.boss.height : 160;
+                
+                this.boss.body.setSize(safeW * 0.8, safeH * 0.8, true); 
+                this.boss.setVelocityY(100); // Start moving down immediately
             }
             
             showMissionText(text) {
@@ -576,7 +576,7 @@
                 missionText.innerText = text;
                 missionText.style.display = 'block';
                 missionText.style.animation = 'none';
-                void missionText.offsetWidth; // Trigger reflow to restart animation
+                void missionText.offsetWidth; 
                 missionText.style.animation = 'flashText 3s forwards';
                 setTimeout(() => { missionText.style.display = 'none'; }, 3000);
             }
@@ -598,7 +598,12 @@
                 [this.lasers, this.bossLasers, this.enemies, this.powerups].forEach(group => {
                     group.children.iterate(c => { if(c) c.setActive(false).setVisible(false); });
                 });
+                
+                // FIX: Reset boss completely on new game
                 this.boss.setActive(false).setVisible(false);
+                this.boss.setPosition(this.scale.width/2, -150);
+                this.boss.setVelocity(0, 0);
+                
                 this.bossHpBg.setVisible(false);
                 this.bossHpBar.setVisible(false);
             }
@@ -618,11 +623,10 @@
         const game = new Phaser.Game(config);
 
         function startGame() {
-            AudioSys.init(); 
+            try { AudioSys.init(); } catch(e) {}
             document.getElementById('start-screen').style.display = 'none';
             document.getElementById('hud').style.display = 'flex';
             
-            // Safe call to start game checking if scene is ready
             if (gameSceneInstance) {
                 gameSceneInstance.startNewGame();
             } else {
@@ -631,7 +635,7 @@
         }
 
         function restartGame() {
-            AudioSys.init();
+            try { AudioSys.init(); } catch(e) {}
             document.getElementById('game-over-screen').style.display = 'none';
             document.getElementById('hud').style.display = 'flex';
             if (gameSceneInstance) {
