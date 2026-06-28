@@ -277,6 +277,11 @@
                 this.boss.setDisplaySize(180, 180);
                 this.boss.body.setCircle(80, this.boss.width/2 - 80, this.boss.height/2 - 80);
                 this.bossHP = 0;
+                this.bossMaxHP = 0;
+
+                // Boss HP Bar Graphics
+                this.bossHpBg = this.add.graphics().setVisible(false).setDepth(20);
+                this.bossHpBar = this.add.graphics().setVisible(false).setDepth(20);
 
                 this.lasers = this.physics.add.group({ classType: Laser, maxSize: 60, runChildUpdate: true });
                 this.bossLasers = this.physics.add.group({ classType: Laser, maxSize: 40, runChildUpdate: true });
@@ -343,6 +348,16 @@
                 }
 
                 if (this.bossActive) {
+                    // Update HP Bar Position and Fill
+                    this.bossHpBg.clear();
+                    this.bossHpBg.fillStyle(0x000000, 0.7);
+                    this.bossHpBg.fillRect(this.boss.x - 75, this.boss.y - 110, 150, 12);
+                    
+                    this.bossHpBar.clear();
+                    this.bossHpBar.fillStyle(0xff0055, 1);
+                    let hpPct = Math.max(0, this.bossHP / this.bossMaxHP);
+                    this.bossHpBar.fillRect(this.boss.x - 75, this.boss.y - 110, 150 * hpPct, 12);
+
                     // Boss Movement & Firing
                     if (this.boss.y < 150) this.boss.setVelocityY(100); // Faster entrance
                     else {
@@ -371,17 +386,34 @@
 
             fireWeapon() {
                 AudioSys.playLaser();
-                let l = this.lasers.get(); if(l) l.fire(this.player.x, this.player.y - 40);
+                
+                // --- SUPER WEAPON DURING BOSS ---
+                let applyBossBuff = (laser) => {
+                    if(!laser) return;
+                    if(this.bossActive) {
+                        laser.setScale(2.5); // Visually larger
+                        laser.setTint(0xffffff); // White hot color
+                        // Massive Hitbox for "Proximity" destruction (halke pass bhi blast)
+                        laser.body.setSize(50, 90); 
+                    } else {
+                        laser.setScale(1); // Normal size
+                        laser.clearTint();
+                        laser.body.setSize(laser.width, laser.height); // Reset hitbox
+                    }
+                };
+
+                let l = this.lasers.get(); 
+                if(l) { l.fire(this.player.x, this.player.y - 40); applyBossBuff(l); }
 
                 if(this.spreadFire) {
-                    let l1 = this.lasers.get(); if(l1) l1.fire(this.player.x, this.player.y - 30, -200, -750);
-                    let l2 = this.lasers.get(); if(l2) l2.fire(this.player.x, this.player.y - 30, 200, -750);
-                    let l3 = this.lasers.get(); if(l3) l3.fire(this.player.x, this.player.y - 20, -400, -700);
-                    let l4 = this.lasers.get(); if(l4) l4.fire(this.player.x, this.player.y - 20, 400, -700);
+                    let l1 = this.lasers.get(); if(l1) { l1.fire(this.player.x, this.player.y - 30, -200, -750); applyBossBuff(l1); }
+                    let l2 = this.lasers.get(); if(l2) { l2.fire(this.player.x, this.player.y - 30, 200, -750); applyBossBuff(l2); }
+                    let l3 = this.lasers.get(); if(l3) { l3.fire(this.player.x, this.player.y - 20, -400, -700); applyBossBuff(l3); }
+                    let l4 = this.lasers.get(); if(l4) { l4.fire(this.player.x, this.player.y - 20, 400, -700); applyBossBuff(l4); }
                 }
                 if(this.hasSidekicks) {
-                    let sl = this.lasers.get(); if(sl) sl.fire(this.sidekickL.x, this.sidekickL.y - 20);
-                    let sr = this.lasers.get(); if(sr) sr.fire(this.sidekickR.x, this.sidekickR.y - 20);
+                    let sl = this.lasers.get(); if(sl) { sl.fire(this.sidekickL.x, this.sidekickL.y - 20); applyBossBuff(sl); }
+                    let sr = this.lasers.get(); if(sr) { sr.fire(this.sidekickR.x, this.sidekickR.y - 20); applyBossBuff(sr); }
                 }
             }
 
@@ -417,13 +449,16 @@
                 laser.setActive(false).setVisible(false);
                 
                 this.bossHP--;
-                this.boss.setTint(0xff0055);
+                this.boss.setTint(0xffffff); // Flash white instead of red for powerful impact
                 this.time.delayedCall(50, () => this.boss.clearTint());
                 
                 // Screen shake on hit for animation enhancement
                 this.cameras.main.shake(100, 0.005);
 
                 if(this.bossHP <= 0) {
+                    this.bossHpBg.setVisible(false);
+                    this.bossHpBar.setVisible(false);
+                    
                     AudioSys.playExp();
                     this.cameras.main.shake(500, 0.02); // Big shake on death
                     this.emitYellow.emitParticleAt(boss.x, boss.y, 60);
@@ -451,6 +486,8 @@
                 if (!hazard.active) return;
                 
                 this.isGameOver = true;
+                this.bossHpBg.setVisible(false);
+                this.bossHpBar.setVisible(false);
                 this.physics.pause();
                 AudioSys.playExp();
                 this.cameras.main.shake(600, 0.03); // Massive shake on player death
@@ -523,6 +560,11 @@
                 this.enemies.children.iterate(e => { if(e) e.setActive(false).setVisible(false); });
 
                 this.bossHP = 20 + (this.level * 15); // Health scales aggressively with level
+                this.bossMaxHP = this.bossHP;
+                
+                this.bossHpBg.setVisible(true);
+                this.bossHpBar.setVisible(true);
+
                 this.boss.setTexture(Phaser.Math.RND.pick(this.enemyTextures)); // Random boss logo
                 this.boss.setPosition(this.scale.width/2, -150);
                 this.boss.setActive(true).setVisible(true);
@@ -557,6 +599,8 @@
                     group.children.iterate(c => { if(c) c.setActive(false).setVisible(false); });
                 });
                 this.boss.setActive(false).setVisible(false);
+                this.bossHpBg.setVisible(false);
+                this.bossHpBar.setVisible(false);
             }
         }
 
